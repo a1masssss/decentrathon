@@ -18,8 +18,10 @@ uvicorn_*.log
 
 # Data and large artifacts
 models/
-data/
+/data/
 "dirt finding"/
+/dirt_finding/
+
 # Explicit dataset paths
 data/damage-anujms/data1a/
 
