@@ -120,8 +120,8 @@ async def analyze(image: UploadFile = File(...)):
         except Exception as e:
             rust_scratch = {"error": f"Rust/Scratch check failed: {str(e)}"}
 
-    # 2.6) If damaged, run parts-level multiclass classifier
-    parts = None
+    # 2.6) If damaged, run parts-level multiclass classifier (same as /damage_parts_local)
+    damage_parts_local = None
     if is_damaged:
         try:
             ckpt_path_parts = os.path.join("models", "damage_parts.pt")
@@ -131,10 +131,11 @@ async def analyze(image: UploadFile = File(...)):
                 # map index to label for convenience
                 pred_idx = int(parts.get("pred_idx", -1))
                 parts["pred_label"] = idx_to_class_p.get(pred_idx, str(pred_idx))
+                damage_parts_local = parts
             else:
-                parts = {"error": "Local checkpoint not found. Train with trains/train_damage_parts.py first.", "expected": ckpt_path_parts}
+                damage_parts_local = {"error": "Local checkpoint not found. Train with trains/train_damage_parts.py first.", "expected": ckpt_path_parts}
         except Exception as e:
-            parts = {"error": f"Parts classifier failed: {str(e)}"}
+            damage_parts_local = {"error": f"Parts classifier failed: {str(e)}"}
 
     # 3) Dirtiness check (local) — skip if damaged
     dirty_result = None
@@ -166,7 +167,7 @@ async def analyze(image: UploadFile = File(...)):
         "damage_source": damage_source,
         "damage_local": damage_local_result,
         "rust_scratch": rust_scratch,
-        "parts": parts,
+        "damage_parts_local": damage_parts_local,
         "dirty": dirty_result,
     }
 
