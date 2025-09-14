@@ -23,6 +23,9 @@ _ALLOWED_ORIGINS = [
     "http://127.0.0.1:5173",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "http://localhost:8080",
+    "http://localhost"
+    "http://127.0.0.1:80",
 ]
 app.add_middleware(
     CORSMiddleware,
@@ -188,7 +191,6 @@ async def analyze(image: UploadFile = File(...)):
                 dirty_result = {"error": "Local checkpoint not found. Train with train_dirty.py first.", "expected": ckpt_path_dirty}
         except Exception as e:
             dirty_result = {"error": f"Dirty check failed: {str(e)}"}
-
     return {
         "is_damaged": bool(is_damaged),
         "damage_source": damage_source,
