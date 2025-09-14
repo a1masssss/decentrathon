@@ -1,10 +1,9 @@
-import React from 'react';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import ResultsMetricsSection from '@/components/ResultsMetricsSection';
 
-export default function ResultsPage() {
+const ResultsPage = () => {
   const navigate = useNavigate();
 
   return (
@@ -50,3 +49,5 @@ export default function ResultsPage() {
     </div>
   );
 }
+
+export default ResultsPage

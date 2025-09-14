@@ -1,10 +1,9 @@
-import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, Sparkles, Star, Shield, TrendingUp, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
-export default function HomePage() {
+const HomePage = () => {
   const navigate = useNavigate();
 
   const features = [
@@ -35,7 +34,7 @@ export default function HomePage() {
   ];
 
   return (
-    <div className="min-h-screen">
+    <div className="flex flex-col min-h-screen">
       {/* Hero Section */}
       <section className="relative min-h-screen flex items-center justify-center overflow-hidden bg-gradient-mesh">
         {/* Animated background elements */}
@@ -187,3 +186,5 @@ export default function HomePage() {
     </div>
   );
 }
+
+export default HomePage;

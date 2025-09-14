@@ -1,5 +1,5 @@
 import { Shield, Star, Bell, TrendingUp, Users, Clock, Target, Award } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 
 const problems = [
   {

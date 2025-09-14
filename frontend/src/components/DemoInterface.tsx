@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Upload, X, Loader2, CheckCircle, AlertCircle, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -56,8 +56,7 @@ const exampleImages = [
 ];
 
 export default function DemoInterface() {
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-  const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisProgress, setAnalysisProgress] = useState(0);
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
@@ -65,9 +64,8 @@ export default function DemoInterface() {
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
     if (file) {
-      setUploadedFile(file);
       const imageUrl = URL.createObjectURL(file);
-      setUploadedImageUrl(imageUrl);
+      setPreviewUrl(imageUrl);
       setAnalysisResult(null);
     }
   }, []);
@@ -110,8 +108,7 @@ export default function DemoInterface() {
   };
 
   const handleExampleClick = (example: typeof exampleImages[0]) => {
-    setUploadedImageUrl(example.url);
-    setUploadedFile(null);
+    setPreviewUrl(example.url);
     setAnalysisResult(null);
     
     // Simulate analysis for example
@@ -134,8 +131,7 @@ export default function DemoInterface() {
   };
 
   const resetDemo = () => {
-    setUploadedFile(null);
-    setUploadedImageUrl(null);
+    setPreviewUrl(null);
     setAnalysisResult(null);
     setIsAnalyzing(false);
     setAnalysisProgress(0);
@@ -186,7 +182,7 @@ export default function DemoInterface() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {!uploadedImageUrl ? (
+              {!previewUrl ? (
                 <div
                   {...getRootProps()}
                   className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
@@ -214,7 +210,7 @@ export default function DemoInterface() {
                 <div className="space-y-4">
                   <div className="relative">
                     <img 
-                      src={uploadedImageUrl} 
+                      src={previewUrl} 
                       alt="Uploaded" 
                       className="w-full h-64 object-cover rounded-lg"
                     />

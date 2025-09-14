@@ -1,10 +1,9 @@
-import React from 'react';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import HowItWorksSection from '@/components/HowItWorksSection';
 
-export default function ProcessPage() {
+const ProcessPage = () => {
   const navigate = useNavigate();
 
   return (
@@ -50,3 +49,5 @@ export default function ProcessPage() {
     </div>
   );
 }
+
+export default ProcessPage

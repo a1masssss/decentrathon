@@ -1,10 +1,9 @@
-import React from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import DemoInterface from '@/components/DemoInterface';
 
-export default function DemoPage() {
+const DemoPage = () => {
   const navigate = useNavigate();
 
   return (
@@ -85,3 +84,5 @@ export default function DemoPage() {
     </div>
   );
 }
+
+export default DemoPage;

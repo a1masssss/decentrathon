@@ -1,10 +1,9 @@
-import React from 'react';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import ProblemValueSection from '@/components/ProblemValueSection';
 
-export default function ProblemPage() {
+const ProblemPage = () => {
   const navigate = useNavigate();
 
   return (
@@ -110,3 +109,5 @@ export default function ProblemPage() {
     </div>
   );
 }
+
+export default ProblemPage

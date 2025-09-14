@@ -1,10 +1,9 @@
-import React from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import RisksNextStepsSection from '@/components/RisksNextStepsSection';
 
-export default function RoadmapPage() {
+const RoadmapPage = () => {
   const navigate = useNavigate();
 
   return (
@@ -40,3 +39,5 @@ export default function RoadmapPage() {
     </div>
   );
 }
+
+export default RoadmapPage
