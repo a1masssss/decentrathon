@@ -8,8 +8,6 @@ services:
       - DATABASE_URL=postgresql://decentra_user:decentra_password@postgres:5432/decentra_database
     volumes:
       - ./backend:/app
-      - ./datasets:/datasets:ro
-      - ./models:/models
     deploy:
       resources:
         limits:
