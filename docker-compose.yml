@@ -1,14 +1,17 @@
 version: "3.9"
 services:
   api:
-    build: .
+    build: ./backend
     container_name: yolov8-api
     ports:
       - "8000:8000"
     environment:
       - PYTHONUNBUFFERED=1
+    working_dir: /app
     volumes:
-      - .:/app
+      - ./backend:/app
+      - ./datasets:/datasets:ro
+      - ./models:/models
     deploy:
       resources:
         limits:

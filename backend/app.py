@@ -110,6 +110,12 @@ async def analyze(image: UploadFile = File(...)):
                     f.write(buf.getvalue())
                 try:
                     rust_scratch = predict_rust_scratch_image_path(ckpt_path_rs, tmp_path)
+                    # Normalize common typos in labels (e.g., 'dunt' -> 'dent')
+                    if isinstance(rust_scratch, dict) and "pred_label" in rust_scratch:
+                        lbl = str(rust_scratch.get("pred_label", ""))
+                        if "dunt" in lbl.lower():
+                            rust_scratch["raw_label"] = lbl
+                            rust_scratch["pred_label"] = "dent"
                 finally:
                     try:
                         os.remove(tmp_path)
@@ -186,6 +192,12 @@ async def rust_scratch_local(image: UploadFile = File(...)):
         f.write(buf.getvalue())
     try:
         result = predict_rust_scratch_image_path(ckpt_path, tmp_path)
+        # Normalize common typos (e.g., 'dunt' -> 'dent')
+        if isinstance(result, dict) and "pred_label" in result:
+            lbl = str(result.get("pred_label", ""))
+            if "dunt" in lbl.lower():
+                result["raw_label"] = lbl
+                result["pred_label"] = "dent"
     finally:
         try:
             os.remove(tmp_path)
