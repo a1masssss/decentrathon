@@ -17,7 +17,6 @@ venv/
 uvicorn_*.log
 
 # Data and large artifacts
-models/
 datasets/
 # Explicit dataset paths
 data/damage-anujms/data1a/
