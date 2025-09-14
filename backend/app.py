@@ -1,4 +1,5 @@
 from fastapi import FastAPI, UploadFile, File
+from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 import io
 import torch
@@ -14,12 +15,32 @@ from inference.inference_damage_parts import (
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-app = FastAPI(title="Car Damage (6-class) → Damaged/Intact", version="0.1")
+app = FastAPI(title="Car Damage → Damaged/Intact", version="0.1")
+
+# CORS for local frontend dev (Vite: http://localhost:5173, Next: http://localhost:3000)
+_ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/health")
 def health():
     return {"status": "ok", "device": device}
+
+@app.get("/analyze")
+def analyze_info():
+    # Lightweight readiness/info endpoint for the frontend
+    return {"ok": True, "endpoint": "analyze", "method": "POST expected with form 'image'"}
 
 
 # Removed Hugging Face /damage endpoint
@@ -206,5 +227,4 @@ async def rust_scratch_local(image: UploadFile = File(...)):
     return result
 
 
-# Removed /scratch_dent_local endpoint per request
 
