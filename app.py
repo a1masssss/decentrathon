@@ -1,21 +1,18 @@
 from fastapi import FastAPI, UploadFile, File
 from PIL import Image
-from transformers import AutoImageProcessor, AutoModelForImageClassification
-import numpy as np
 import io
 import torch
 import os
 
-from inference_damage import load_checkpoint, predict_image_bytes
-from inference_dirty import predict_image_path
-
-MODEL_ID = "beingamit99/car_damage_detection"
-TAU = 0.35  
+from inference.inference_damage import load_checkpoint, predict_image_bytes
+from inference.inference_dirty import predict_image_path
+from inference.inference_rust_scratch import predict_image_path as predict_rust_scratch_image_path
+from inference.inference_damage_parts import (
+    load_checkpoint as load_damage_parts_ckpt,
+    predict_image_bytes as predict_damage_parts_bytes,
+)
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
-processor = AutoImageProcessor.from_pretrained(MODEL_ID)
-model = AutoModelForImageClassification.from_pretrained(MODEL_ID).to(device).eval()
-id2label = model.config.id2label
 
 app = FastAPI(title="Car Damage (6-class) → Damaged/Intact", version="0.1")
 
@@ -25,31 +22,7 @@ def health():
     return {"status": "ok", "device": device}
 
 
-@app.post("/damage")
-async def damage(image: UploadFile = File(...)):
-    image_bytes = await image.read()
-    img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-    inputs = processor(images=img, return_tensors="pt").to(device)
-    with torch.no_grad():
-        logits = model(**inputs).logits[0]
-    probs = torch.softmax(logits, dim=-1).cpu().numpy()
-
-    idx = int(probs.argmax())
-    pred_label = id2label[idx]
-    pred_score = float(probs[idx])
-
-    damaged = bool(pred_score >= TAU)
-
-    topk = np.argsort(-probs)[:3].tolist()
-    top = [{"label": id2label[i], "score": float(probs[i])} for i in topk]
-
-    return {
-        "damaged": damaged,
-        "threshold": TAU,
-        "pred_label": pred_label,
-        "pred_score": pred_score,
-        "top3": top,
-    }
+# Removed Hugging Face /damage endpoint
 
 
 @app.post("/damage_local")
@@ -62,6 +35,19 @@ async def damage_local(image: UploadFile = File(...)):
     result = predict_image_bytes(model_local, tf, image_bytes, damage_index)
     return result
 
+
+# New endpoint: run damage parts classifier directly
+@app.post("/damage_parts_local")
+async def damage_parts_local(image: UploadFile = File(...)):
+    ckpt_path = os.path.join("models", "damage_parts.pt")
+    if not os.path.exists(ckpt_path):
+        return {"error": "Local checkpoint not found. Train with trains/train_damage_parts.py first.", "expected": ckpt_path}
+    image_bytes = await image.read()
+    model_p, tf_p, idx_to_class_p = load_damage_parts_ckpt(ckpt_path)
+    out = predict_damage_parts_bytes(model_p, tf_p, image_bytes)
+    pred_idx = int(out.get("pred_idx", -1))
+    out["pred_label"] = idx_to_class_p.get(pred_idx, str(pred_idx))
+    return out
 
 @app.post("/dirty_local")
 async def dirty_local(image: UploadFile = File(...)):
@@ -107,39 +93,48 @@ async def analyze(image: UploadFile = File(...)):
     except Exception:
         pass
 
-    detailed = None
-    if is_damaged is None:
-        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-        inputs = processor(images=img, return_tensors="pt").to(device)
-        with torch.no_grad():
-            logits = model(**inputs).logits[0]
-        probs = torch.softmax(logits, dim=-1).cpu().numpy()
+    # Hugging Face inference removed; if no local damage model, is_damaged stays None
 
-        idx = int(probs.argmax())
-        pred_label = id2label[idx]
-        pred_score = float(probs[idx])
-        topk = np.argsort(-probs)[:3].tolist()
-        top = [{"label": id2label[i], "score": float(probs[i])} for i in topk]
+    # 2.5) If damaged, run rust/scratch classification (local)
+    rust_scratch = None
+    if is_damaged:
+        try:
+            ckpt_path_rs = os.path.join("models", "rust_scratch.pt")
+            if os.path.exists(ckpt_path_rs):
+                img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+                buf = io.BytesIO()
+                img.save(buf, format="JPEG", quality=90)
+                buf.seek(0)
+                tmp_path = os.path.join("/tmp", f"rustscratch_{os.getpid()}.jpg")
+                with open(tmp_path, "wb") as f:
+                    f.write(buf.getvalue())
+                try:
+                    rust_scratch = predict_rust_scratch_image_path(ckpt_path_rs, tmp_path)
+                finally:
+                    try:
+                        os.remove(tmp_path)
+                    except Exception:
+                        pass
+            else:
+                rust_scratch = {"error": "Local checkpoint not found. Train with trains/train_rust_scratch.py first.", "expected": ckpt_path_rs}
+        except Exception as e:
+            rust_scratch = {"error": f"Rust/Scratch check failed: {str(e)}"}
 
-        is_damaged = bool(pred_score >= TAU)
-        detailed = {"pred_label": pred_label, "pred_score": pred_score, "top3": top, "threshold": TAU}
-        damage_source = "huggingface"
-
-    # 2) If damaged and no details yet, compute detailed with HF
-    if is_damaged and detailed is None:
-        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-        inputs = processor(images=img, return_tensors="pt").to(device)
-        with torch.no_grad():
-            logits = model(**inputs).logits[0]
-        probs = torch.softmax(logits, dim=-1).cpu().numpy()
-
-        idx = int(probs.argmax())
-        pred_label = id2label[idx]
-        pred_score = float(probs[idx])
-        topk = np.argsort(-probs)[:3].tolist()
-        top = [{"label": id2label[i], "score": float(probs[i])} for i in topk]
-
-        detailed = {"pred_label": pred_label, "pred_score": pred_score, "top3": top, "threshold": TAU}
+    # 2.6) If damaged, run parts-level multiclass classifier
+    parts = None
+    if is_damaged:
+        try:
+            ckpt_path_parts = os.path.join("models", "damage_parts.pt")
+            if os.path.exists(ckpt_path_parts):
+                model_p, tf_p, idx_to_class_p = load_damage_parts_ckpt(ckpt_path_parts)
+                parts = predict_damage_parts_bytes(model_p, tf_p, image_bytes)
+                # map index to label for convenience
+                pred_idx = int(parts.get("pred_idx", -1))
+                parts["pred_label"] = idx_to_class_p.get(pred_idx, str(pred_idx))
+            else:
+                parts = {"error": "Local checkpoint not found. Train with trains/train_damage_parts.py first.", "expected": ckpt_path_parts}
+        except Exception as e:
+            parts = {"error": f"Parts classifier failed: {str(e)}"}
 
     # 3) Dirtiness check (local) — skip if damaged
     dirty_result = None
@@ -170,8 +165,33 @@ async def analyze(image: UploadFile = File(...)):
         "is_damaged": bool(is_damaged),
         "damage_source": damage_source,
         "damage_local": damage_local_result,
-        "damage_detail": detailed if is_damaged else None,
+        "rust_scratch": rust_scratch,
+        "parts": parts,
         "dirty": dirty_result,
     }
 
+@app.post("/rust_scratch_local")
+async def rust_scratch_local(image: UploadFile = File(...)):
+    ckpt_path = os.path.join("models", "rust_scratch.pt")
+    if not os.path.exists(ckpt_path):
+        return {"error": "Local checkpoint not found. Train with trains/train_rust_scratch.py first.", "expected": ckpt_path}
+    image_bytes = await image.read()
+    img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=90)
+    buf.seek(0)
+    tmp_path = os.path.join("/tmp", f"rustscratch_{os.getpid()}.jpg")
+    with open(tmp_path, "wb") as f:
+        f.write(buf.getvalue())
+    try:
+        result = predict_rust_scratch_image_path(ckpt_path, tmp_path)
+    finally:
+        try:
+            os.remove(tmp_path)
+        except Exception:
+            pass
+    return result
+
+
+# Removed /scratch_dent_local endpoint per request
 
