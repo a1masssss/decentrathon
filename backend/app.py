@@ -4,6 +4,10 @@ from PIL import Image
 import io
 import torch
 import os
+import psycopg2
+import json
+import hashlib
+import time
 
 from inference.inference_damage import load_checkpoint, predict_image_bytes
 from inference.inference_dirty import predict_image_path
@@ -14,6 +18,31 @@ from inference.inference_damage_parts import (
 )
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
+
+# Database connection details from environment variables
+DB_NAME = os.getenv("POSTGRES_DB", "postgres")
+DB_USER = os.getenv("POSTGRES_USER", "postgres")
+DB_PASSWORD = os.getenv("POSTGRES_PASSWORD", "postgres")
+DB_HOST = os.getenv("DB_HOST", "db")
+DB_PORT = os.getenv("DB_PORT", "5432")
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+def get_db_connection():
+    if DATABASE_URL:
+        conn = psycopg2.connect(DATABASE_URL)
+    else:
+        conn = psycopg2.connect(
+            dbname=DB_NAME,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            host=DB_HOST,
+            port=DB_PORT
+        )
+    return conn
+
+# Create uploads directory for persisting analyzed images
+UPLOADS_DIR = "uploads"
+os.makedirs(UPLOADS_DIR, exist_ok=True)
 
 app = FastAPI(title="Car Damage → Damaged/Intact", version="0.1")
 
@@ -100,6 +129,17 @@ async def dirty_local(image: UploadFile = File(...)):
 @app.post("/analyze")
 async def analyze(image: UploadFile = File(...)):
     image_bytes = await image.read()
+
+    # Save the uploaded image to a file.
+    # We use a content hash + timestamp to create a unique filename.
+    timestamp = str(time.time()).encode()
+    filename_hash = hashlib.sha256(image_bytes + timestamp).hexdigest()
+    file_extension = os.path.splitext(image.filename)[1] if image.filename else ".jpg"
+    image_filename = f"{filename_hash}{file_extension}"
+    image_path = os.path.join(UPLOADS_DIR, image_filename)
+
+    with open(image_path, "wb") as f:
+        f.write(image_bytes)
 
     # 1) is_damaged: prefer local binary model; fallback to HF classifier threshold
     is_damaged = None
@@ -191,7 +231,8 @@ async def analyze(image: UploadFile = File(...)):
                 dirty_result = {"error": "Local checkpoint not found. Train with train_dirty.py first.", "expected": ckpt_path_dirty}
         except Exception as e:
             dirty_result = {"error": f"Dirty check failed: {str(e)}"}
-    return {
+
+    analysis_result = {
         "is_damaged": bool(is_damaged),
         "damage_source": damage_source,
         "damage_local": damage_local_result,
@@ -199,6 +240,63 @@ async def analyze(image: UploadFile = File(...)):
         "damage_parts_local": damage_parts_local,
         "dirty": dirty_result,
     }
+
+    # Save results to the database
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO analysis_results (
+                image_path, is_damaged, damage_source, damage_local_result,
+                rust_scratch_result, damage_parts_local_result, dirty_result
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                image_path,
+                analysis_result["is_damaged"],
+                analysis_result["damage_source"],
+                json.dumps(analysis_result["damage_local"]),
+                json.dumps(analysis_result["rust_scratch"]),
+                json.dumps(analysis_result["damage_parts_local"]),
+                json.dumps(analysis_result["dirty"]),
+            ),
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+        analysis_result["db_status"] = "success"
+    except Exception as e:
+        analysis_result["db_status"] = "failed"
+        analysis_result["db_error"] = str(e)
+
+
+    return analysis_result
+
+@app.get("/history")
+def get_history():
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM analysis_results ORDER BY created_at DESC")
+        
+        # Get column names from cursor description
+        columns = [desc[0] for desc in cur.description]
+        
+        history = []
+        for row in cur.fetchall():
+            history.append(dict(zip(columns, row)))
+
+        return {"history": history}
+    except Exception as e:
+        # Return a 500 error for internal server issues
+        return {"error": f"Database query failed: {str(e)}"}, 500
+    finally:
+        if conn:
+            cur.close()
+            conn.close()
+
 
 @app.post("/rust_scratch_local")
 async def rust_scratch_local(image: UploadFile = File(...)):
@@ -227,6 +325,4 @@ async def rust_scratch_local(image: UploadFile = File(...)):
         except Exception:
             pass
     return result
-
-
 
